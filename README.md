@@ -7,6 +7,8 @@
 
 > ⚠️ 现阶段的片名与评分全部是**合成演示数据**，与豆瓣等真实平台的评分无关。
 
+![首页](movie-rating-duel/docs/screenshots/01-home.png)
+
 ## 目录结构
 
 ```

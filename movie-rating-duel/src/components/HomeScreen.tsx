@@ -100,28 +100,31 @@ export function HomeScreen({ movies, disclaimer, initialConfig, onStart }: HomeS
         </fieldset>
 
         <div className="field">
-          <label className="field__label" htmlFor="year-from">
-            起始年份
-          </label>
+          <span className="field__label">上映年份</span>
           <div className="year-row">
-            <input
-              id="year-from"
-              className="input"
-              inputMode="numeric"
-              value={fromText}
-              onChange={(event) => setFromText(event.target.value)}
-            />
-            <span className="year-row__sep">至</span>
-            <label className="field__label field__label--inline" htmlFor="year-to">
-              结束年份
+            <label className="year-field" htmlFor="year-from">
+              <span className="year-field__label">起始年份</span>
+              <input
+                id="year-from"
+                className="input"
+                inputMode="numeric"
+                value={fromText}
+                onChange={(event) => setFromText(event.target.value)}
+              />
             </label>
-            <input
-              id="year-to"
-              className="input"
-              inputMode="numeric"
-              value={toText}
-              onChange={(event) => setToText(event.target.value)}
-            />
+            <span className="year-row__sep" aria-hidden="true">
+              至
+            </span>
+            <label className="year-field" htmlFor="year-to">
+              <span className="year-field__label">结束年份</span>
+              <input
+                id="year-to"
+                className="input"
+                inputMode="numeric"
+                value={toText}
+                onChange={(event) => setToText(event.target.value)}
+              />
+            </label>
           </div>
           <p className="field__hint">
             片库覆盖 {bounds.min}–{bounds.max} 年。

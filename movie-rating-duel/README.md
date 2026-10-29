@@ -6,6 +6,18 @@
 > ⚠️ 当前片库是 **60 条合成测试数据**（虚构片名 + 虚构评分），不是豆瓣或任何真实评分。
 > UI 内会持续显示该免责声明。
 
+## 界面预览
+
+| 首页 | 作答后揭示评分 |
+| --- | --- |
+| ![首页](docs/screenshots/01-home.png) | ![作答后揭示评分](docs/screenshots/03-answer-revealed.png) |
+
+移动端（390px 宽）：
+
+<img src="docs/screenshots/04-mobile-home.png" alt="移动端首页" width="320" />
+
+> 截图脚本：`node scripts/capture-screenshots.mjs`（需先启动 `pnpm dev`）。
+
 ## 快速开始
 
 ```bash

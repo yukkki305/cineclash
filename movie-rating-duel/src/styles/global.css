@@ -99,11 +99,6 @@ body {
   text-transform: uppercase;
 }
 
-.field__label--inline {
-  align-self: center;
-  margin: 0 4px;
-}
-
 .field__hint {
   margin: 0;
   font-size: 0.85rem;
@@ -167,13 +162,26 @@ body {
 
 .year-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+.year-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.year-field__label {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
 }
 
 .year-row__sep {
   color: var(--text-dim);
+  padding-bottom: 12px;
 }
 
 .input {
