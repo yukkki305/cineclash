@@ -1,64 +1,78 @@
-# TASKS —— 里程碑与任务清单
+# 任务清单
 
-状态图例：`[ ]` 未开始 · `[~]` 进行中 · `[x]` 已完成
+> 状态图例：✅ 完成　🟡 进行中　⬜ 未开始　⛔ 阻塞
+> 完成定义见 `AGENTS.md` 第 13 条：任务只有在「实现 + 测试 + 文档同步」都完成后才算 ✅。
 
-> 规则（来自 [AGENTS.md](../AGENTS.md)）：勾选完成前必须满足「完成定义」，
-> 且 `npm test` 全绿、相关文档已同步。
+## 里程碑
 
-## M0 —— 领域内核（v0.1.0）　**当前阶段**
-
-- [x] 初始化仓库结构（`docs/` `src/` `tests/`）
-- [x] 编写 PRD / ARCHITECTURE / TEST_PLAN
-- [x] `core/elo.js`：`expectedScore`、`updateRatings`（K 可配置、下限 clamp）
-- [x] `core/duel.js`：`pickDuel` 三种策略 + 参数校验
-- [x] `core/rng.js`：`mulberry32` 可复现随机源
-- [x] `data/movies.js`：种子片库（12 部）
-- [x] `index.js`：60 场对决模拟 + 排行榜输出
-- [x] `tests/`：Elo 与配对的单元测试
-- [x] 覆盖率基线记录：`core/` 与 `data/` 行/分支/函数覆盖均为 **100%**（`npm run coverage`）
-- [x] 用 3 个种子各跑一次模拟（`MRD_SEED` = 20240601 / 5320 / 777），前三名均来自口味列表前 3 位，
-      说明 60 场对决足以还原粗排序；中段（4–9 名）摇晃明显，场次仍是瓶颈
-
-## M1 —— 最小可用界面
-
-- [ ] 选型前端框架并在 ARCHITECTURE 追加 ADR-005
-- [ ] 对决卡片组件（双列、海报占位、片名 + 年份）
-- [ ] 选择交互：点击、键盘 `←`/`→`、移动端滑动手势
-- [ ] 分值变化动效（±Δ，1.5s 后自动下一题）
-- [ ] 榜单视图（排序、场次、Δ）
-- [ ] `localStorage` 持久化 + `schemaVersion` 迁移骨架
-- [ ] 平局按钮（`S = 0.5`）
-- [ ] 响应式布局 320–1440px 自测
-- [ ] 空状态与错误状态（片库不足 2 部）
-
-## M2 —— 体验完善
-
-- [ ] 撤销上一题（依赖 `DuelRecord` 前后快照）
-- [ ] 「都没看过」跳过并降权该配对
-- [ ] 自适应 K 值（解决 PRD 开放问题 Q1，需模拟数据支撑）
-- [ ] 分享卡片导出 PNG
-- [ ] 片库导入（CSV）与手动添加
-- [ ] 覆盖度提示（已参战 / 总片库）
-- [ ] 可访问性复核：对比度、焦点顺序、读屏标签
-
-## M3 —— 多用户（可选，取决于 M1 效果）
-
-- [ ] 服务端 Duel API（见 ARCHITECTURE 第 6 节）
-- [ ] 账号与数据同步
-- [ ] 好友榜单对比（双列 + 口味相关度）
-- [ ] 全局榜（需防刷与异常检测设计）
-
-## 已知技术债
-
-| 债务 | 影响 | 处理时机 |
+| 里程碑 | 目标 | 状态 |
 | --- | --- | --- |
-| 对齐取整破坏严格零和 | 长跑后可能出现 ±1 漂移 | M2 前决定是否改为「差值累积、展示取整」 |
-| 种子片库仅 12 部 | 对决重复率高 | M1 前扩到 ≥ 60 部，按题材分层 |
-| 无前端构建 | 无 HMR、无类型检查 | M1 选型时一并解决 |
-| 模拟脚本的「口味」是人造的 | 只能验证代码正确性，不能验证产品体验 | 需要真人试用数据 |
+| M0 | 仓库初始化、目录骨架、工具链（Vite/TS/Vitest） | ✅ |
+| M1 | 游戏内核：难度、配对枚举、抽题、局面状态机 | ✅ |
+| M2 | 数据层：合成片库 + 校验 + 适配器 | ✅ |
+| M3 | UI：首页 / 游戏页 / 结束页 / 响应式 | ✅ |
+| M4 | 测试：单元 + 组件（70 用例） | ✅ |
+| M5 | 文档：PRD / ARCHITECTURE / TASKS / TEST_PLAN / README | ✅ |
+| M6 | E2E：Playwright 冒烟测试 | ✅ |
+| M7 | 片库扩容（解决 Expert 区间过窄、配对易耗尽） | ⬜ |
+| M8 | 真实评分数据接入（需批准，合规优先） | ⛔ |
 
-## 下一步（按顺序）
+## M1 游戏内核（✅）
 
-1. 补覆盖率基线，确认 core 行覆盖 ≥ 90%
-2. 用 3 个不同种子跑模拟，检查不同 K 值下的收敛速度（为 Q1 提供依据）
-3. 前端选型 → 写 ADR-005 → 开工对决卡片
+- [x] `src/game/types.ts`：`Movie` / `GameState` / `Question` / `GameConfig` 类型
+- [x] `src/game/difficulty.ts`：Normal 0.8–2.0 / Advanced 0.3–0.7 / Expert 0.1–0.2
+- [x] `src/game/question.ts`：`isLegalPair`、`collectLegalPairs`、`selectQuestion`
+- [x] `src/game/engine.ts`：`startGame` / `answerQuestion` / `advanceQuestion` / `restartGame` / `accuracyOf`
+- [x] 配对付尽时回退复用，绝不返回 `undefined` 或死循环（规则 13）
+- [x] 左右位置随机化（规则 14）
+
+## M2 数据层（✅）
+
+- [x] 60 条合成片库，全部带 `ratingSource` 与免责声明
+- [x] `validateMovies` 覆盖 7 类问题，坏记录剔除并上报
+- [x] `createMovieSource` 构造即校验，失败抛 `MovieDataError`
+
+## M3 UI（✅）
+
+- [x] 首页：难度选择、年份区间、配对数预览、非法输入拦截
+- [x] 游戏页：HUD（题号/生命/得分/正确率）、评分隐藏、作答后揭示、下一题
+- [x] 结束页：得分 / 已作答 / 答对 / 正确率 / 剩余生命 / 两种终局文案
+- [x] 缺图降级为片名首字；小屏单列、大屏双列
+
+## M4 测试（✅）
+
+- [x] `question.test.ts`（19）、`engine.test.ts`（18）、`validate.test.ts`（12）
+- [x] `screens.test.tsx`（15）、`App.test.tsx`（6）
+- [x] 覆盖率：语句 94.37% / 分支 91.48%（`src/game` + `src/data`）
+
+## M5 文档（✅）
+
+- [x] 本文件与 `PRD.md`、`ARCHITECTURE.md`、`TEST_PLAN.md`
+- [x] `README.md`（项目根与子目录）
+- [x] `legacy/README.md`：说明旧 Elo 原型的定位与运行方式
+
+## M6 Playwright E2E（✅）
+
+- [x] 安装 `@playwright/test` 1.64.1 与 Chromium headless shell（经本地代理下载）
+- [x] `playwright.config.ts`：`webServer` 直接以 node 启动 vite（127.0.0.1:5173），
+      避免 `pnpm run` 在 node 不在 PATH 时失败
+- [x] `e2e/smoke.spec.ts` 四条用例：首页要素 / 年份非法拦截 / 作答揭示评分 / 打完整局并再来一局
+- [x] `package.json` 增加 `pnpm run test:e2e`
+
+运行：`pnpm run test:e2e`（首次需 `node node_modules/@playwright/test/cli.js install chromium`）。
+实测 4 条用例全部通过，耗时约 4.7s。
+
+## M7 片库扩容（⬜，用户已确认后期处理）
+
+背景：Expert 只接受 0.1–0.2 的评分差，60 部片库中符合的配对很少；
+年份筛选收窄后规则 15 的「不重复配对」也会很快耗尽。
+
+- [ ] 片库扩到 300+ 部，保证每档难度在每个年份子区间内都有足够配对
+- [ ] 首页增加「当前条件可出题数」的提示（已有配对数，需补文案）
+- [ ] 扩容后重新评估 Expert 的 0.1–0.2 是否仍然合理
+
+## M8 真实数据接入（⛔ 阻塞，需批准）
+
+- [ ] 确认可用且合规的数据源（不得抓取豆瓣、不得绕过限流）
+- [ ] 实现新的 `MovieSource`，保留 `ratingSource` 溯源
+- [ ] 数据快照入库存档，附抓取时间与许可说明

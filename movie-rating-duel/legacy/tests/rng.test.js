@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mulberry32 } from '../src/core/rng.js';
+import { mulberry32 } from '../core/rng.js';
 
 describe('mulberry32', () => {
   test('R-01 输出始终落在 [0, 1)', () => {

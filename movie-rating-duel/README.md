@@ -1,76 +1,82 @@
-# movie-rating-duel
+# 谁的评分更高？ · Movie Rating Duel
 
-用「二选一」的强制选择来给电影排序：每次只呈现两部电影，选出更喜欢的那个，
-系统用 **Elo 算法**持续更新每部电影在你心里的分值，最终得到一份可解释的个人排行榜。
+一个纯浏览器端的电影评分二选一小游戏：同时给出两部电影，点出**评分更高的那一部**。
+答对 +1 分，答错 −1 条命，5 条命用完游戏结束。
 
-- 不要求给绝对分数（避免「8 分到底有多好」的标准漂移）
-- 每一次对比只消耗一次直觉判断
-- 分值变化可追溯，榜单可分享
+> ⚠️ 当前片库是 **60 条合成测试数据**（虚构片名 + 虚构评分），不是豆瓣或任何真实评分。
+> UI 内会持续显示该免责声明。
 
 ## 快速开始
 
-需要 Node.js >= 20。
+```bash
+pnpm install
+pnpm dev          # http://127.0.0.1:5173
+```
+
+生产构建与预览：
 
 ```bash
-cd movie-rating-duel
-npm start        # 运行内置的 60 场对决模拟，打印排行榜
-npm test         # 运行单元测试（使用 Node 内置 test runner，无第三方依赖）
-npm run coverage # 覆盖率报告（门槛：core 行覆盖 ≥ 90%）
+pnpm run build    # tsc --noEmit && vite build → dist/
+pnpm run preview
 ```
 
-换种子复现不同趋势：
+> 环境备注：如果终端里 `node` 命令不可用，`pnpm run` 会失败并报
+> `'node' is not recognized`。此时先把 Node 目录加入 `PATH`，或直接用绝对路径的 node 调 pnpm。
 
-```bash
-MRD_SEED=5320 npm start     # bash / macOS / Linux
-$env:MRD_SEED=5320; npm start   # PowerShell
+## 可用脚本
+
+| 命令 | 作用 |
+| --- | --- |
+| `pnpm dev` | 本地开发服务器（5173） |
+| `pnpm run build` | 类型检查 + 生产构建 |
+| `pnpm run preview` | 预览 `dist/` |
+| `pnpm run typecheck` | 仅跑 `tsc --noEmit` |
+| `pnpm test` | Vitest 全量用例（70 个） |
+| `pnpm run test:watch` | 监听模式 |
+| `pnpm run coverage` | 覆盖率报告（`src/game` + `src/data`） |
+| `pnpm run test:e2e` | Playwright E2E 冒烟测试（自动启动 vite） |
+
+## 玩法
+
+1. 首页选难度与年份范围，开始。
+2. 每道题显示两部电影（片名 + 年份），评分先隐藏；点其中一部作答。
+3. 立即揭晓双方评分与数据来源，并高亮正确答案。
+4. 生命耗尽，或当前筛选下再没有合法题目时，进入结束页：得分、已作答、答对、正确率、剩余生命。
+5. 「再来一局」沿用上次配置，所有数值清零。
+
+难度按**评分差绝对值**划分（`src/game/difficulty.ts`，唯一数据源）：
+
+| 难度 | 评分差 | 手感 |
+| --- | --- | --- |
+| 普通 | 0.8 – 2.0 | 靠印象就能答对 |
+| 进阶 | 0.3 – 0.7 | 需要一点印象比对 |
+| 专家 | 0.1 – 0.2 | 基本靠猜 |
+
+正确率 = 答对 / 已作答；一题都没答时显示「暂不可用」，绝不除零。
+
+## 目录
+
+```
+src/
+├── game/        纯逻辑：难度、配对合法性、抽题、局面状态机
+├── data/        合成片库、记录校验、数据源适配器
+├── components/  首页 / 游戏页 / 卡片 / 结束页
+├── styles/      全局样式与响应式
+└── test/        jest-dom setup + 测试用片库夹具
+legacy/          v0 Elo 原型归档（不参与构建，见 legacy/README.md）
+docs/           PRD、架构、任务清单、测试计划
 ```
 
-`npm start` 的输出示例：
+## 质量现状
 
-```
-#  电影                          年份   分值    Δ
-1  千与千寻                      2001   1187   +187
-2  疯狂的麦克斯 4：狂暴之路       2015   1142   +142
-...
-```
-
-## 目录结构
-
-```
-movie-rating-duel/
-├── AGENTS.md          # 面向 AI 编码代理与协作者的约定
-├── README.md
-├── package.json
-├── docs/
-│   ├── PRD.md         # 产品需求文档
-│   ├── ARCHITECTURE.md# 技术架构与关键决策
-│   ├── TASKS.md       # 里程碑与任务清单
-│   └── TEST_PLAN.md   # 测试策略与用例
-├── src/
-│   ├── core/          # 纯领域逻辑（无 IO，可单测）
-│   ├── data/          # 静态片库种子数据
-│   └── index.js       # 演示入口
-└── tests/             # 与 src/core 一一对应的单元测试
-```
-
-## 核心规则
-
-1. 每部电影初始分值 1000，用户看到 A/B 两部电影二选一。
-2. 选择结果折算为得分 `S ∈ {1, 0.5, 0}`（胜 / 平 / 负）。
-3. 期望胜率 `E_A = 1 / (1 + 10^((R_B - R_A) / 400))`。
-4. 新分值 `R_A' = R_A + K * (S_A - E_A)`，默认 `K = 32`，下限 100。
-5. 单场对决是零和的（扣除四舍五入误差）。
+- 类型检查与生产构建通过；`vitest run` 70 个用例全绿。
+- 覆盖率（`src/game` + `src/data`）：语句 94.37%、分支 91.48%。
+- Playwright E2E 4 条用例全绿（首页要素、年份非法拦截、作答揭示评分、打完整局并再来一局）。
 
 ## 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [docs/PRD.md](docs/PRD.md) | 目标用户、用户故事、P0/P1/P2 功能与验收标准 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 分层、算法细节、数据模型、存储演进、ADR |
-| [docs/TASKS.md](docs/TASKS.md) | M0–M3 里程碑与可勾选任务 |
-| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | 测试分层、用例表、覆盖率与 CI 要求 |
-
-## 当前状态
-
-`v0.1.0` —— 领域内核与文档就绪，尚无 Web 界面。界面框架选型见
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的「待定」一节。
+- [产品需求 `docs/PRD.md`](docs/PRD.md)
+- [架构说明 `docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [任务清单 `docs/TASKS.md`](docs/TASKS.md)
+- [测试计划 `docs/TEST_PLAN.md`](docs/TEST_PLAN.md)
+- [开发规范 `AGENTS.md`](AGENTS.md)

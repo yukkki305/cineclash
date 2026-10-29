@@ -7,7 +7,7 @@ import {
   MIN_RATING,
   expectedScore,
   updateRatings,
-} from '../src/core/elo.js';
+} from '../core/elo.js';
 
 describe('expectedScore', () => {
   test('E-01 同分时期望胜率为 0.5', () => {

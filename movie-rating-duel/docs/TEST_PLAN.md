@@ -1,105 +1,69 @@
-# TEST_PLAN —— 测试策略与用例
+# 测试计划
 
-| 字段 | 值 |
-| --- | --- |
-| 版本 | v0.1.0 |
-| 覆盖对象 | `src/core/**`（当前）；界面在 M1 后纳入 |
-| 关联文档 | [PRD.md](PRD.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [TASKS.md](TASKS.md) |
+## 1. 测试分层
 
-## 1. 原则
-
-1. **测试核心，不测试展示**：`src/core` 是纯函数，是唯一值得高覆盖的地方；
-   `index.js` 的打印格式不做断言。
-2. **确定性优先**：一切随机性通过 `rng` 参数注入，测试使用 `mulberry32(seed)`。
-3. **容差断言**：涉及取整的数值比较用 `Math.abs(actual - expected) <= 1`，不用严格相等。
-4. **红灯不提交**：`npm test` 未通过不得提交（见 [AGENTS.md](../AGENTS.md)）。
-5. **用例与 PRD 对齐**：每条 P0 需求至少有一条对应用例。
-
-## 2. 测试分层
-
-| 层级 | 范围 | 工具 | 何时运行 |
+| 层级 | 工具 | 范围 | 现状 |
 | --- | --- | --- | --- |
-| 单元 | `core/elo.js`、`core/duel.js`、`core/rng.js` | `node --test tests/` | 每次提交 |
-| 集成（M1） | 对决流程：选片 → 计分 → 落库 → 榜单 | 待定 | 每次提交 |
-| 端到端（M1） | 浏览器实机操作 | 待定（Playwright 候选） | 合并前 |
-| 视觉/可访问性（M2） | 对比度、焦点顺序 | 待定 | 里程碑前 |
+| 单元（纯函数） | Vitest | `src/game/*`、`src/data/validate.ts` | ✅ 49 用例 |
+| 组件/集成 | Vitest + RTL + jsdom | `src/components/*`、`src/App.tsx` | ✅ 21 用例 |
+| E2E | Playwright（Chromium） | 真实浏览器主干路径 | ✅ 4 用例 |
+| 视觉回归 | — | 像素比对 | ⬜ 不做（当前阶段） |
 
-## 3. 用例清单（单元层）
-
-### 3.1 `core/elo.js`
-
-| ID | 用例 | 输入 | 期望 | 对应需求 |
-| --- | --- | --- | --- | --- |
-| E-01 | 同分期望胜率 | `expectedScore(1000, 1000)` | `0.5`（误差 < 1e-12） | US-2 |
-| E-02 | 强者期望 > 0.5 | `expectedScore(1200, 1000)` | `> 0.5`，且 `≈ 0.7597` | US-2 |
-| E-03 | 期望值互补 | 任意 `(a, b)` | `E(a,b) + E(b,a) = 1` | — |
-| E-04 | 胜者加分、负者减分 | `updateRatings(1000, 1000, 1)` | `ratingA > 1000 > ratingB` | US-1 |
-| E-05 | 零和（容差内） | 同上 | `|ΔA + ΔB| <= 1` | — |
-| E-06 | 平局近似不动 | `updateRatings(1000, 1000, 0.5)` | `|ΔA| <= 1 且 |ΔB| <= 1` | US-3 |
-| E-07 | 强队胜出加分更少 | `(1400,1000,1)` vs `(1000,1000,1)` 的 `ΔA` | 前者更小 | US-2 |
-| E-08 | 爆冷加分更多 | `(1000,1400,1)` 的 `ΔA` > `(1400,1000,1)` 的 `ΔA` | 成立 | US-2 |
-| E-09 | 下限 clamp | `(100, 2000, 0)`，`minRating=100` | `ratingA >= 100` | — |
-| E-10 | 非法得分抛错 | `scoreA = 0.3` | 抛 `RangeError` | — |
-| E-11 | 非有限数抛错 | `ratingA = NaN` | 抛 `TypeError` | — |
-| E-12 | K 值可配置 | `k = 64` 的 `ΔA` ≈ `k = 32` 的 2 倍 | 误差 ≤ 2 | — |
-| E-13 | 交换对称性 | `updateRatings(b, a, 0)` 与 `updateRatings(a, b, 1)` 交换后等价 | 差值 ≤ 1 | — |
-
-### 3.2 `core/duel.js`
-
-| ID | 用例 | 输入 | 期望 | 对应需求 |
-| --- | --- | --- | --- | --- |
-| D-01 | 片库不足抛错 | `pickDuel([one])` | 抛 `RangeError` | US-1 |
-| D-02 | 非数组抛错 | `pickDuel(null)` | 抛 `RangeError` | — |
-| D-03 | 返回两部不同电影 | 12 部，`random` | `a.id !== b.id` | US-1 |
-| D-04 | 同种子可复现 | 同 seed 调两次 | 结果 `id` 完全一致 | — |
-| D-05 | 不同种子可分化 | seed 1 vs seed 2 | 至少一次结果不同 | — |
-| D-06 | `closest` 选最接近 | 分值 `[1000, 1002, 1500]` | 选中 `1000` 与 `1002` | M2 |
-| D-07 | `widest` 选差距最大 | 同上 | 选中 `1000` 与 `1500` | M2 |
-| D-08 | 未知策略抛错 | `strategy: 'unknown'` | 抛 `RangeError` | — |
-| D-09 | `ratingOf` 注入生效 | 自定义 `ratingOf` | 策略按注入值计算 | — |
-
-### 3.3 `core/rng.js`
-
-| ID | 用例 | 期望 |
-| --- | --- | --- |
-| R-01 | 输出范围 | 所有值 `0 <= x < 1` |
-| R-02 | 确定性 | 同 seed 序列完全一致 |
-| R-03 | 分布粗检 | 10000 次采样均值落在 `0.45–0.55` |
-
-## 4. 数据与断言约定
-
-- 数值断言容差：整数分差用 `1`；概率用 `1e-9`；浮点倍率用 `0.05`。
-- 不允许在测试中使用 `Math.random`。
-- 每个测试文件对应一个 `src/core` 模块，文件名 `<module>.test.js`。
-
-## 5. 覆盖率要求
+## 2. 运行方式
 
 ```bash
-npm run coverage     # 等价于 node --test --experimental-test-coverage
+# 在 movie-rating-duel/ 下
+pnpm test            # vitest run，跑全部用例
+pnpm run test:watch  # 监听模式
+pnpm run coverage    # 覆盖率（v8，统计 src/game + src/data）
+pnpm run typecheck   # tsc --noEmit
+pnpm run build       # 类型检查 + 生产构建
+pnpm run test:e2e    # Playwright E2E（自动拉起 vite dev server）
 ```
 
-| 指标 | 门槛 |
-| --- | --- |
-| `src/core/**` 行覆盖 | ≥ 90% |
-| `src/core/**` 分支覆盖 | ≥ 80% |
-| `src/index.js` | 不要求 |
+环境备注：本机 Node 不在 PATH 时，需先把捆绑运行时加入 PATH，
+否则 `pnpm run` 会报 `'node' is not recognized`。
 
-未达门槛的处理：先补用例，不要用 `/* c8 ignore */` 绕过。
+## 3. 规则覆盖矩阵
 
-## 6. 手工验证清单（M1 起）
+| 规则 | 断言点 | 用例位置 |
+| --- | --- | --- |
+| 1 新局 5 条命 | `LIVES_PER_GAME === 5`，`startGame` 后 `lives === 5` | `engine.test.ts` |
+| 2 答对 +1 分 | `score + 1`，`lives` 不变 | `engine.test.ts` |
+| 3 答错 −1 命 | `lives - 1`，`score` 不变 | `engine.test.ts` |
+| 4 生命不为负 | 连错 5 次后 `lives === 0`，第 6 次不越界 | `engine.test.ts`、`App.test.tsx` |
+| 5 每题只答一次 | 二次 `answerQuestion` 返回原状态引用 | `engine.test.ts` |
+| 6 结束后不接受作答 | `phase: 'finished'` 下调用无效果 | `engine.test.ts` |
+| 7 归零即结束 | `lives === 0 → phase 'finished'` | `engine.test.ts`、`screens.test.tsx` |
+| 8 重开重置 | 得分/生命/计数/`usedPairs` 全部清零 | `engine.test.ts`、`App.test.tsx` |
+| 9 ID 必须不同 | 同 ID 配对 `isLegalPair === false` | `question.test.ts` |
+| 10 等分不出题 | 评分相同 → 非法配对 | `question.test.ts` |
+| 11 年份范围 | 越界任一方 → 非法 | `question.test.ts` |
+| 12 数值比较 | 评分差按数值计算（9.9 vs 3.1） | `question.test.ts` |
+| 13 无配对安全终止 | `selectQuestion` 返回 `null`，`exhausted === true` | `question.test.ts`、`engine.test.ts` |
+| 14 左右不偏置 | 固定 rng 序列可产出两种朝向 | `question.test.ts` |
+| 15 不重复配对 | 未用池非空时不重复；耗尽后才允许复用 | `question.test.ts`、`engine.test.ts` |
 
-- [ ] 320px / 768px / 1440px 三种宽度下对决卡片不破版
-- [ ] 仅用键盘完成 5 次对决（Tab → Enter / ← →）
-- [ ] 连续刷新 3 次，榜单与分值不丢失、不重复
-- [ ] 片库仅 1 部时显示空状态而非崩溃
-- [ ] 撤销后两个分值都精确回到前一状态
+## 4. 其它必测行为
 
-## 7. CI 约定（待接入）
+- **正确率**：未作答 → `null`（UI 显示「暂不可用」）；答对 1 错 1 → 0.5。
+- **数据校验**：7 类问题码各自有正例；坏记录被剔除但其余记录保留。
+- **难度配置**：`getDifficulty` 未知 ID 抛 `RangeError`；三档区间互不重叠。
+- **首页输入**：非数字、越界、起始晚于结束、无合法题目——四种错误各自独立触发，按钮禁用。
+- **缺图降级**：无 `posterUrl` 时显示片名首字，不渲染破图。
+- **免责声明**：首页与结束页都显示 `SYNTHETIC_DATA_DISCLAIMER`
+  （「本页所有片名、年份与评分均为演示用的合成数据，与豆瓣等真实平台的评分无关。」）。
 
-```yaml
-# 草案
-- run: npm test
-- run: npm run coverage
-```
+## 5. 手工验收清单（每次发版前）
 
-当前仓库尚无 CI 配置；接入时机为 M1 引入前端构建时（需要先决定托管平台）。
+1. 三档难度各开一局，确认题目评分差落在对应区间。
+2. 把年份收窄到只剩 2–3 部电影，确认首页拦下「没有合法题目」或开局后能正常走到「题目已用尽」。
+3. 连续答错 5 次，确认第 5 次后立即进入结束页且生命显示 0。
+4. 结束页点「再来一局」，确认得分/生命/正确率归零、题目重新开始。
+5. 窄屏（< 640px）下确认卡片单列、按钮可点、HUD 不换行错位。
+
+## 6. 已知缺口
+
+- 无视觉回归：样式改动仅靠人工检查。
+- 覆盖率未强制卡阈值；`components/` 只统计到分支主路径。
+- E2E 只覆盖主干路径（4 条用例），难度切换、年份收窄后的 `exhausted` 终局仍靠单元测试保证。

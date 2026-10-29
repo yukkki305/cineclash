@@ -1,24 +1,39 @@
 {
   "name": "movie-rating-duel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "电影评分对决：用二选一的强制选择，把观影偏好压缩成可解释的个人 Elo 排行榜",
-  "keywords": [
-    "movie",
-    "elo",
-    "ranking",
-    "duel",
-    "recommendation"
-  ],
+  "description": "Movie Rating Duel（谁的评分更高？）：浏览器端电影评分比较游戏",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "node src/index.js",
-    "test": "node --test",
-    "test:watch": "node --test --watch",
-    "coverage": "node --test --experimental-test-coverage"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "jsdom": "^30.1.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

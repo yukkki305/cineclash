@@ -1,177 +1,124 @@
-# ARCHITECTURE —— 技术架构与关键决策
+# 架构说明
 
-| 字段 | 值 |
-| --- | --- |
-| 版本 | v0.1.0 |
-| 状态 | 内核已实现，界面待选型 |
-| 关联文档 | [PRD.md](PRD.md) · [TASKS.md](TASKS.md) · [TEST_PLAN.md](TEST_PLAN.md) |
+## 1. 技术栈
 
-## 1. 技术选型
+React 19 + TypeScript + Vite + Vitest + React Testing Library（jsdom）。
+样式为单一手写 CSS（`src/styles/global.css`），无 UI 框架、无 CSS 预处理器、无状态管理库。
 
-| 项 | 选择 | 理由 |
-| --- | --- | --- |
-| 语言 | JavaScript（ESM） | 领域逻辑只有算术和数组操作，无需类型系统即可保证正确性；测试和浏览器共用同一份源码 |
-| 运行时 | Node.js >= 20 | 内置 `node:test` 与 `--watch`，无需 jest/vitest |
-| 依赖 | **无运行时依赖** | 核心是纯计算；降低安装成本与供应链风险 |
-| 测试 | `node --test` | 零配置，`npm test` 开箱即用 |
-| 构建 | 无 | 源码即产物，浏览器或 Node 直接加载 |
-
-> 未来引入前端框架时重新评估本表，并在第 7 节追加 ADR。
-
-## 2. 分层
+## 2. 目录结构
 
 ```
 movie-rating-duel/
+├── index.html                # 唯一入口 HTML，挂载 #root
+├── vite.config.ts            # Vite + Vitest 配置（jsdom、覆盖率）
+├── tsconfig.json             # strict + noUncheckedIndexedAccess
 ├── src/
-│   ├── core/            纯领域逻辑：无 IO、无副作用、可任意顺序调用
-│   │   ├── elo.js       期望胜率与分值更新
-│   │   ├── duel.js      对决配对策略
-│   │   └── rng.js       可复现的伪随机数（mulberry32）
-│   ├── data/
-│   │   └── movies.js    静态片库种子
-│   └── index.js         演示入口：组织调用 + 打印表格
-├── tests/               与 src/core 对应的单元测试
-└── docs/
+│   ├── main.tsx              # ReactDOM.createRoot
+│   ├── App.tsx               # 唯一持有 GameState 的组件（状态机宿主）
+│   ├── game/                 # 纯逻辑层：不 import React，不读写 DOM
+│   │   ├── types.ts          # Movie / GameState / Question / Difficulty 类型
+│   │   ├── difficulty.ts     # 难度阈值（唯一数据源）
+│   │   ├── question.ts       # 配对枚举、合法性判定、抽题
+│   │   └── engine.ts         # 局面状态机（开始/作答/下一题/重开/正确率）
+│   ├── data/                 # 数据层：校验 + 适配器隔离数据源
+│   │   ├── movies.ts         # 60 条合成片库 + 免责声明
+│   │   ├── validate.ts       # 记录级校验（纯函数）
+│   │   └── source.ts         # MovieSource 适配器，构造即校验
+│   ├── components/           # 表现层：只接收 props，无全局状态
+│   │   ├── HomeScreen.tsx    # 难度 + 年份筛选 + 配对数
+│   │   ├── GameScreen.tsx    # HUD + 题目 + 反馈 + 下一题
+│   │   ├── MovieCard.tsx     # 单片卡片（可点、可揭示评分）
+│   │   └── ResultScreen.tsx  # 结算
+│   ├── styles/global.css     # 全局样式与响应式断点
+│   └── test/                 # setup.ts（jest-dom）+ fixtures.ts（测试用片库）
+└── legacy/                   # v0 Elo 原型归档，不参与构建、不被 src 引用
 ```
 
-**依赖方向**：`index.js → core + data`；`core` 不依赖 `data`、不依赖 `index`、不 import 任何 `node:` 模块。
-这条单向依赖是可移植性（CLI / 浏览器 / Worker / 服务端复用同一内核）的前提。
-
-## 3. 核心算法
-
-### 3.1 期望胜率
+## 3. 分层与依赖方向
 
 ```
-E_A = 1 / (1 + 10 ^ ((R_B - R_A) / 400))
+components  →  App  →  game/*        （单向）
+components  →  data/*（只读展示评分来源）
+game/*      →  game/types            （不反向依赖 React 或 data）
+data/*      →  data/validate         （movies.ts 只导出数据）
 ```
 
-- `E_A` 表示分值更高的 A 应该赢的概率，`E_A + E_B = 1`。
-- 400 分差 ≈ 10:1 的胜率比，是 Elo 的经典刻度。
+`src/game/**` 与 `src/data/**` 是**纯函数库**：给定相同输入必得相同输出，可脱离浏览器直接单测。
+所有副作用（随机数、时钟、渲染）被压缩在边界上。
 
-### 3.2 分值更新
+## 4. 状态机
+
+`GameState.phase` 只有三个取值：
 
 ```
-R_A' = R_A + K * (S_A - E_A)
-R_B' = R_B - K * (S_A - E_A)
+idle ──startGame──▶ playing ──生命归零──▶ finished
+  ▲                    │                    │
+  │                    └──无合法配对──▶ finished（exhausted）
+  └────────restartGame(无 config)───────────┘
 ```
 
-| 符号 | 含义 | 取值 |
-| --- | --- | --- |
-| `K` | 学习率，越大收敛越快也越抖 | 默认 `32` |
-| `S_A` | 实际得分 | 胜 `1` / 平 `0.5` / 负 `0` |
-| `R` | 分值 | 初始 `1000`，下限 `100` |
+字段：`config`、`lives`、`score`、`answered`、`correct`、`question`、`usedPairs`、`feedback`、`exhausted`。
 
-**性质**：
+不可变更新：所有 `game/` 函数返回**新的** `GameState`，从不就地修改入参
+（唯一例外是 `startGame` 的旧状态参数被忽略，签名保留以便将来做「续局」）。
+这使 React 的 `setState` 天然正确，也让测试可以直接比较前后两个快照。
 
-1. **零和**：`ΔR_A = -ΔR_B`（在未取整的实数域上严格成立）。
-2. **平移不变**：对所有分值同时加常数，`E_A` 不变。
-3. **对称**：交换 A/B 并令 `S_B = 1 - S_A`，更新结果对称。
-4. **取整误差**：实现中两边各自 `Math.round`，单边误差最大 1 分 —— 因此测试必须用容差断言。
+## 5. 关键算法
 
-### 3.3 配对策略（`pickDuel`）
+### 5.1 合法配对枚举（`collectLegalPairs`）
 
-| 策略 | 语义 | 用途 |
-| --- | --- | --- |
-| `random` | 均匀随机抽两部不同电影 | P0 默认，保证探索 |
-| `closest` | 选择分值最接近的一对 | 分值可信度收敛后做精细排序 |
-| `widest` | 选择分值差距最大的一对 | 快速确认榜首/榜尾 |
+双重循环 O(n²)，逐条应用规则 9–12 与难度区间，结果按 `pairKey` 字典序排序。
+排序不是性能需要，而是**确定性**需要：测试与回放必须稳定。
+60 条片库 → 最多 1770 对，实测远小于 1ms。
 
-接口：`pickDuel(movies, { strategy = 'random', rng = Math.random, ratingOf })`。
-`ratingOf` 默认读取 `movie.rating`，缺省回退到 `1000`，使 `core` 不关心存储形态。
+### 5.2 抽题（`selectQuestion`）
 
-> 少于 2 部电影时抛 `RangeError`。返回 `{ a, b }`，保证 `a !== b`。
+1. 取全部合法配对；为空 → 返回 `null`（调用方进入 `exhausted` 终局）。
+2. 过滤掉本局已用过的 `pairKey`；若未用集合非空则从中抽，否则**回退**到全部合法配对上抽。
+   → 规则 15 在「还有未用配对」时严格成立；配对耗尽后复用而不是卡死。
+3. 用注入的 `Rng` 取 `index = floor(normalize(rng()) * pool.length)`。
+4. 再用一次 `rng()` 决定是否交换左右，保证正确答案不会系统性出现在同一侧（规则 14）。
+5. `correctId` 取两者中评分更高者；因为规则 10 排除了等分，不存在平局。
 
-## 4. 数据模型
+`normalize()` 把 NaN / 越界随机值夹到合法区间，防止注入的坏随机源导致 `pool[undefined]`。
 
-```js
-// 电影（片库条目，只读）
-Movie {
-  id: string;        // 稳定的唯一标识，例如 'spirited-away-2001'
-  title: string;
-  year: number;
-  genres: string[];  // 用于未来的题材筛选
-}
+### 5.3 浮点噪声
 
-// 评分（每用户每电影一条，可变）
-Rating {
-  movieId: string;
-  value: number;     // Elo 分值，初始 1000
-  duels: number;     // 参与场次
-  wins: number;
-  losses: number;
-  draws: number;
-}
+评分差统一用 `Math.round(|a.rating − b.rating| × 1000) / 1000` 计算，
+并允许 `EPSILON = 1e-9` 的区间容差，避免 `0.8 − 0.7 = 0.10000000000000009` 这类误差
+把边界题错误地判为非法。
 
-// 对决记录（用于撤销与审计）
-DuelRecord {
-  id: string;
-  movieA: string;
-  movieB: string;
-  outcome: 'a' | 'b' | 'draw' | 'skip';
-  ratingABefore: number;
-  ratingBBefore: number;
-  ratingAAfter: number;
-  ratingBAfter: number;
-  at: number;        // 时间戳
-}
-```
+## 6. 数据层与适配器
 
-`DuelRecord` 同时保存前值与后值，使撤销（US-4）只需回读快照，无需重放整段历史。
+`validateMovies(input, now)` 返回 `{ ok, issues, valid }`：**坏记录被剔除，问题被如实报告**，
+绝不静默吞掉。校验码：`duplicate-id`、`duplicate-record`、`empty-title`、`invalid-year`、
+`invalid-rating`、`missing-rating-source`、`invalid-poster-url`。
 
-## 5. 存储演进
+`createMovieSource({ name, disclaimer, movies })` 在构造时调用校验，失败抛 `MovieDataError`，
+空片库同样抛错——UI 永远不会拿到一个「看起来正常但没数据」的源。
+`yearRange` 由片库推导，供首页筛选边界使用。
 
-| 阶段 | 方案 | 触发条件 |
-| --- | --- | --- |
-| M0 | 进程内存 | 当前（模拟运行） |
-| M1 | `localStorage` 单键 JSON（`mrd:v1`） | 需要跨刷新保留 |
-| M2 | IndexedDB | 片库 > 500 部或记录 > 5000 场 |
-| M3 | Postgres + REST | 需要账号与多设备同步 |
+将来接真实数据时，只需新增一个返回 `MovieSource` 的模块，`game/` 与 `components/` 均无需改动。
 
-**迁移策略**：M1→M2 读取 `localStorage` 后批量写入 IndexedDB，写入成功再删除旧键。
-所有持久化数据带 `schemaVersion` 字段，升级时走显式迁移函数，不做静默兼容。
+## 7. 可测试性设计
 
-## 6. 未来接口草案（M3，非本期实现）
+- 所有随机行为通过参数 `rng: () => number` 注入；测试用线性同余/固定序列。
+- 时间只通过 `validateMovies(input, now)` 显式传入，不读 `Date.now()`。
+- 组件测试用 RTL 从用户视角驱动（`getByRole` / `getByLabelText`），不测实现细节。
+- `App` 接受 `movies` / `disclaimer` / `rng` props，因此「合成数据」与「测试小片库」共用同一套 UI。
 
-```http
-GET  /api/duel?userId=:id               → { a: Movie, b: Movie }
-POST /api/duel/:duelId/result           → { outcome: "a" | "b" | "draw" | "skip" }
-GET  /api/leaderboard?userId=:id        → [{ movieId, value, duels }]
-```
+## 8. 决策记录（ADR）
 
-服务端只信任 `outcome`，分值由服务端调用同一份 `core/elo.js` 计算 —— 这是内核保持纯函数、
-零依赖的直接收益。
+- **ADR-001 用 React + TS + Vite 重写，而非在旧 JS 上打补丁**：旧实现的玩法（Elo 二选一评分器）
+  与新 PRD 不同，混改会同时污染逻辑与测试。旧代码以 `legacy/` 归档保留可运行状态。
+- **ADR-002 逻辑层纯函数 + 状态整体替换**：避免隐式可变状态，让 15 条规则可以被单独断言。
+- **ADR-003 随机源注入而非 `Math.random()` 直调**：题目可复现，测试稳定。
+- **ADR-004 配对耗尽后复用而非结束**：配合「生命耗尽」这一主要终局，避免玩家在正常难度下
+  被过早打断；规则 15 的约束仅在存在未用配对时生效。
+- **ADR-005 合成数据先行**：真实评分涉及版权与数据来源合规，先用明确标注的合成数据打通全链路。
 
-## 7. 架构决策记录（ADR）
+## 9. 已知技术债
 
-### ADR-001：用 Elo，而不是平均分
-
-**背景**：二选一只提供「A 比 B 好」这一比特信息。
-**决策**：采用 Elo。
-**理由**：平均分把每次比较当作一个独立评分，忽略对手强弱；Elo 天然编码「赢了强对手得分更多」。
-**替代方案**：TrueSkill（更强但实现重）、Bradley–Terry 最大似然（需要批量重算，不适合实时更新）。
-**后果**：需要定期检查收敛性；分值绝对大小无意义，只有相对顺序有意义。
-
-### ADR-002：核心逻辑保持纯函数
-
-**决策**：`src/core/**` 不接触 IO、时间、随机源（随机源通过参数注入）。
-**理由**：可确定性测试；同一份代码可运行在 CLI、浏览器、Worker、服务端。
-**后果**：`index.js` 承担所有「副作用编排」，会比其他文件啰嗦，这是刻意的。
-
-### ADR-003：零依赖起步
-
-**决策**：不引入任何运行时依赖，测试用 `node:test`。
-**理由**：当前代码量小；避免锁定构建工具；供应链风险最低。
-**后果**：没有 JSX/类型检查/热更新；界面阶段需要重新评估（见第 8 节）。
-
-### ADR-004：暂不引入 Glicko-2
-
-**决策**：保留 Elo 的固定 K 值。
-**理由**：Glicko-2 需要维护 RD 与波动率，最小对局数门槛更高，早期数据不足时置信区间会很宽，反而难解释。
-**后果**：场次少的电影分值不可信 —— 由「覆盖度」提示与未来的 Q1（自适应 K）缓解。
-
-## 8. 待定事项
-
-- **界面框架**：React / Svelte / Vue / 原生 Web Components，未定；倾向 Svelte 或原生，以保持轻量。
-- **海报来源**：版权与热链风险未评估，M1 前必须给出方案（本地占位图 / TMDB API / 用户自传）。
-- **分享卡片**：Canvas 渲染 vs SVG 转 PNG，未定。
-- **部署**：GitHub Pages（纯静态）为首选，需确认子路径 `base` 配置。
+- E2E 仅 4 条主干用例，难度切换与「题目用尽」终局仍依赖单元测试。
+- 配对枚举是 O(n²) 且每次抽题全量重算；片库扩到数千部时需要预计算或索引。
+- `App` 用单个 `useState` 持有整局状态，规模变大后可能拆成 reducer + context。

@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DUEL_STRATEGIES, pickDuel } from '../src/core/duel.js';
-import { mulberry32 } from '../src/core/rng.js';
-import { MOVIES } from '../src/data/movies.js';
+import { DUEL_STRATEGIES, pickDuel } from '../core/duel.js';
+import { mulberry32 } from '../core/rng.js';
+import { MOVIES } from '../data/movies.js';
 
 function randomDuel(seed) {
   return pickDuel(MOVIES, { rng: mulberry32(seed) });
